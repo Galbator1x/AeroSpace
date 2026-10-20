@@ -111,3 +111,50 @@ Leave the current build in ordinary use for a few days. Keep startup, lock/unloc
 app reopening and visual flicker as separate observations. Review and refactoring
 are deferred to a separate step; no functional refactoring is included in the
 diagnostics cleanup.
+
+
+## Review and refactoring checkpoint
+
+Reviewed the complete changes since upstream `74a1bf17` for conventions, behavior,
+performance, state persistence and concurrency. No documented coding-standard
+violations were found. Four operational issues were addressed:
+
+- Stop restoring after three visible-layout retries when the application rejects
+  the exact frame. Explicit mouse movement or resizing cancels the pending restore.
+- Determine standard-window eligibility even for initially tiled windows, so their
+  geometry can be saved after switching to floating without restoring while tiled.
+- Queue immutable geometry snapshots on a serial utility queue instead of writing
+  files on the main actor. Pending snapshots replace one another while the writer
+  is busy. There is no timer, periodic polling or fixed write-rate limit.
+- Prune obsolete geometry IDs when replacing the closed-window layout snapshot;
+  keep missing-window entries while reusing the snapshot that still refers to them.
+
+The writer retains a failed snapshot, retries on a later layout event at most once
+per second, and reports an uninterrupted failure only once. A newer snapshot
+replaces an older failed one. The existing termination handler and AppKit's normal
+termination notification flush pending writes before exit. Forced termination,
+crashes and power loss can still lose the latest queued update; a stalled filesystem
+can delay normal shutdown while flushing. Calling `remember` with a writer updates
+memory immediately and schedules persistence; it does not promise a durable write
+before returning.
+
+A standalone debug microbenchmark on this Mac measured 1,000 changing-frame saves:
+about 753 ms with synchronous persistence versus 1.10 ms to submit background
+snapshots plus 1.44 ms to drain the remaining queue. Ten thousand unchanged calls
+on the synchronous path took about 15.9 ms. The tight-loop burst benefits heavily
+from coalescing; these numbers are not an end-to-end UI, CPU, battery, or sustained
+write-rate benchmark. Extra AX calls remain during detection/restoration, and the
+initial eligibility check now also covers tiled windows. No background timer,
+network traffic or routine diagnostic logging was added.
+
+The debug application build succeeded. All methods from the two geometry XCTest
+source files were executed through the standalone CLT harness, in addition to the
+existing redetection/reopening regression scenarios. Checks include bounded frame
+retries, mouse cancellation, queued latest-snapshot ordering, forget, file mode,
+flush after a write failure and retry of unchanged geometry after recovery.
+This uses test assertions and fixtures without Apple's XCTest runner and does not
+replace a full XCTest run or interactive lock/unlock/reboot validation.
+
+Latest local evidence under `~/Library/Application Support/dotfiles/aerospace-build/`:
+`run-review-regressions.py`, `regression-review.log` and `build-review.log`.
+The installed working application has not been replaced by this refactoring build.

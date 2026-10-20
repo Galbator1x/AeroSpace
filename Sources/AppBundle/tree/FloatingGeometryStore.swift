@@ -1,6 +1,6 @@
 import Foundation
 
-struct FloatingGeometry: Codable, Equatable {
+struct FloatingGeometry: Codable, Equatable, Sendable {
     let x: Double
     let y: Double
     let width: Double
@@ -37,9 +37,11 @@ enum FloatingGeometryLookup: Equatable {
 struct FloatingGeometryStore {
     private let url: URL
     private var entries: [String: FloatingGeometry]
+    private let writer: FloatingGeometryWriter?
 
-    init(url: URL) throws {
+    init(url: URL, writer: FloatingGeometryWriter? = nil) throws {
         self.url = url
+        self.writer = writer
         if FileManager.default.fileExists(atPath: url.path) {
             entries = try JSONDecoder().decode([String: FloatingGeometry].self, from: Data(contentsOf: url))
             guard entries.values.allSatisfy(\.isValid) else {
@@ -72,10 +74,23 @@ struct FloatingGeometryStore {
     }
 
     private mutating func commit(_ updated: [String: FloatingGeometry]) throws {
-        guard updated != entries else { return }
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try JSONEncoder().encode(updated).write(to: url, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        guard updated != entries else {
+            writer?.retryIfNeeded()
+            return
+        }
+        if let writer {
+            writer.submit(updated)
+        } else {
+            try Self.write(updated, to: url)
+        }
         entries = updated
+    }
+
+    func flush() { writer?.flush() }
+
+    static func write(_ entries: [String: FloatingGeometry], to url: URL) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONEncoder().encode(entries).write(to: url, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 }

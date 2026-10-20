@@ -55,7 +55,7 @@ struct FrozenWorkspace: Sendable {
         workspaces: allWs.map { FrozenWorkspace($0) },
         monitors: monitorInfos.map(FrozenMonitor.init),
         windowIds: allWindowIds,
-        floatingWindowGeometry: geometry,
+        floatingWindowGeometry: geometry.filter { allWindowIds.contains($0.key) },
     )
 }
 

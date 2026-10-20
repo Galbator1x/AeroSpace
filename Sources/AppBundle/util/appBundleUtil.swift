@@ -18,14 +18,20 @@ func interceptTermination(_ _signal: Int32) {
     } as sig_t)
 }
 
+@MainActor private var geometryTerminationObserver: NSObjectProtocol?
+
 @MainActor
 func initTerminationHandler() {
     unsafe _terminationHandler = AppServerTerminationHandler()
+    geometryTerminationObserver = NotificationCenter.default.addObserver(
+        forName: NSApplication.willTerminateNotification, object: nil, queue: .main,
+    ) { _ in MainActor.assumeIsolated { flushReopenedGeometry() } }
 }
 
 private struct AppServerTerminationHandler: TerminationHandler {
     @MainActor
     func beforeTermination() {
+        flushReopenedGeometry()
         // Make all windows fullscreen before Quit
         for window in MacWindow.allWindowsMap.values {
             // makeAllWindowsVisibleAndRestoreSize may be invoked when something went wrong (e.g. some windows are unbound)
