@@ -6,6 +6,7 @@ open class Window: TreeNode, Hashable {
     let app: any AbstractApp
     var lastFloatingSize: CGSize?
     var reopenedGeometryRetryCount = 0
+    var pendingReopenedGeometryBounds: FloatingGeometry?
     var pendingReopenedGeometry: FloatingGeometry?
     var prevUnhiddenProportionalPositionInsideWorkspaceRect: CGPoint?
     var isFullscreen: Bool = false

@@ -24,6 +24,7 @@ func prepareReopenedGeometry(_ geometry: FloatingGeometry, for window: Window) {
     let target = geometry.clamped(to: FloatingGeometry(bounds))
     window.reopenedGeometryRetryCount = 0
     window.pendingReopenedGeometry = target
+    window.pendingReopenedGeometryBounds = FloatingGeometry(bounds)
     window.lastFloatingSize = target.size
     window.prevUnhiddenProportionalPositionInsideWorkspaceRect = CGPoint(
         x: (target.x - bounds.topLeftX) / bounds.width,
@@ -36,8 +37,10 @@ func applyPreparedGeometryBeforeFocus(
     to window: Window,
     apply: @MainActor (FloatingGeometry) async throws -> Bool
 ) async throws -> Bool {
+    window.rebaseReopenedGeometryIfNeeded()
     guard let target = window.pendingReopenedGeometry else { return false }
     let applied = try await apply(target)
+    window.rebaseReopenedGeometryIfNeeded()
     // Don't clear a newer restore that was prepared while the AX operation was suspended.
     if applied && window.pendingReopenedGeometry == target {
         window.prevUnhiddenProportionalPositionInsideWorkspaceRect = nil
@@ -85,6 +88,7 @@ extension MacWindow {
 
     @MainActor
     func rememberReopenedGeometry(_ rect: Rect, beforeParking: Bool = false) {
+        rebaseReopenedGeometryIfNeeded()
         guard !needsReopenedGeometryDecision, supportsReopenedGeometry, isFloating, !isFullscreen,
               let bundle = macApp.rawAppBundleId, let workspace = nodeWorkspace,
               !MacApp.allAppsMap.values.contains(where: { $0 !== macApp && $0.rawAppBundleId == bundle }) else { return }
@@ -114,6 +118,7 @@ func confirmReopenedGeometry(_ actual: FloatingGeometry, for window: Window, vis
     guard let pending = window.pendingReopenedGeometry else { return true }
     if actual.approximatelyEquals(pending) {
         window.pendingReopenedGeometry = nil
+        window.pendingReopenedGeometryBounds = nil
         return true
     }
     guard visible else { return false }
@@ -128,9 +133,36 @@ func confirmReopenedGeometry(_ actual: FloatingGeometry, for window: Window, vis
 
 extension Window {
     @MainActor
+    func rebaseReopenedGeometryIfNeeded() {
+        guard pendingReopenedGeometry != nil, let workspace = nodeWorkspace else { return }
+        rebaseReopenedGeometry(to: FloatingGeometry(workspace.workspaceMonitor.rect))
+    }
+
+    @MainActor
+    func rebaseReopenedGeometry(to bounds: FloatingGeometry) {
+        guard let pending = pendingReopenedGeometry, let previous = pendingReopenedGeometryBounds,
+              bounds.isValid, previous != bounds else { return }
+        let target = FloatingGeometry(
+            x: bounds.x + (pending.x - previous.x) / previous.width * bounds.width,
+            y: bounds.y + (pending.y - previous.y) / previous.height * bounds.height,
+            width: pending.width, height: pending.height,
+        ).clamped(to: bounds)
+        pendingReopenedGeometry = target
+        pendingReopenedGeometryBounds = bounds
+        lastFloatingSize = target.size
+        reopenedGeometryRetryCount = 0
+        if prevUnhiddenProportionalPositionInsideWorkspaceRect != nil {
+            prevUnhiddenProportionalPositionInsideWorkspaceRect = CGPoint(
+                x: (target.x - bounds.x) / bounds.width, y: (target.y - bounds.y) / bounds.height,
+            )
+        }
+    }
+
+    @MainActor
     func cancelReopenedGeometry() {
         guard pendingReopenedGeometry != nil else { return }
         pendingReopenedGeometry = nil
+        pendingReopenedGeometryBounds = nil
         prevUnhiddenProportionalPositionInsideWorkspaceRect = nil
     }
 }

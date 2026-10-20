@@ -158,3 +158,37 @@ replace a full XCTest run or interactive lock/unlock/reboot validation.
 Latest local evidence under `~/Library/Application Support/dotfiles/aerospace-build/`:
 `run-review-regressions.py`, `regression-review.log` and `build-review.log`.
 The installed working application has not been replaced by this refactoring build.
+
+
+## Follow-up review: SIGTERM and monitor changes
+
+Two findings from the second review were fixed:
+
+- A retained main-queue `DispatchSourceSignal` handles SIGTERM, flushes geometry
+  and exits. It does not run filesystem operations inside a POSIX signal handler
+  or invoke the window-repositioning shutdown routine. This covers the LaunchAgent
+  stop path in addition to the existing AppKit/menu exit hooks.
+- Pending restoration records its monitor bounds. Before unhiding, before/after
+  an awaited frame write and before confirming a frame, the target is rebased to
+  current bounds using proportional position and clamped size. Visible windows
+  stay visible, hidden windows retain their proportional position, and a changed
+  target gets a fresh retry budget. Windows without a pending target skip monitor
+  resolution on this path.
+
+Focused checks passed: a real SIGTERM delivered to a standalone process with a
+blocked pending writer drained its snapshot before exit; a subprocess launched
+through Foundation.Process still terminated normally on SIGTERM. The monitor
+checks cover a smaller display, negative display coordinates, visibility retention
+and clearing monitor state on confirmation/cancellation. Geometry regression
+methods and the debug build also passed. These checks do not manipulate the
+installed AeroSpace process or user windows.
+
+A fresh standards/resource and behavior review found no further actionable issue
+within these two fixes. Initial popup/dialog reclassification remains explicitly
+deferred by the user. SIGKILL, crashes, power loss, launchd termination escalation
+and failing storage remain outside a guarantee of final-write durability; stalled
+storage can delay the flushing shutdown path.
+
+Evidence in the local build directory: `run-signal-monitor-regressions.py`,
+`regression-signal-monitor.log`, `build-signal-monitor.log`, and
+`test-geometry-sigterm.swift`. The installed working application remains unchanged.

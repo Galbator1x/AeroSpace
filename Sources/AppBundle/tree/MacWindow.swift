@@ -161,6 +161,7 @@ final class MacWindow: Window {
 
     @MainActor
     func unhideFromCorner() {
+        rebaseReopenedGeometryIfNeeded()
         guard let prevUnhiddenProportionalPositionInsideWorkspaceRect else { return }
         guard let nodeWorkspace else { return } // hiding only makes sense for workspace windows
         guard let parent else { return }

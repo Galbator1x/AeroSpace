@@ -155,4 +155,36 @@ final class PersistentFloatingGeometryTest: XCTestCase {
         XCTAssertEqual(try FloatingGeometryStore(url: url).geometry(for: "example.App"), wanted)
     }
 
+    func testPendingRestoreRebasesToAnotherMonitor() {
+        setUpWorkspacesForTests()
+        let window = TestWindow.new(id: 9999, parent: Workspace.get(byName: "E").floatingWindowsContainer)
+        let wanted = FloatingGeometry(x: 286, y: 49, width: 1116, height: 907)
+        prepareReopenedGeometry(wanted, for: window)
+        window.reopenedGeometryRetryCount = 2
+        let otherMonitor = FloatingGeometry(x: 1920, y: 0, width: 1280, height: 720)
+        window.rebaseReopenedGeometry(to: otherMonitor)
+        let target = FloatingGeometry(x: 2084, y: 0, width: 1116, height: 720)
+        XCTAssertEqual(window.pendingReopenedGeometry, target)
+        XCTAssertEqual(window.pendingReopenedGeometryBounds, otherMonitor)
+        XCTAssertEqual(window.lastFloatingSize, target.size)
+        XCTAssertEqual(window.reopenedGeometryRetryCount, 0)
+        XCTAssertEqual(window.prevUnhiddenProportionalPositionInsideWorkspaceRect,
+                       CGPoint(x: 164.0 / 1280, y: 0))
+        XCTAssertTrue(confirmReopenedGeometry(target, for: window, visible: true))
+        XCTAssertNil(window.pendingReopenedGeometryBounds)
+    }
+
+    func testMonitorRebaseDoesNotMarkVisibleWindowHidden() {
+        setUpWorkspacesForTests()
+        let window = TestWindow.new(id: 9999, parent: Workspace.get(byName: "E").floatingWindowsContainer)
+        prepareReopenedGeometry(FloatingGeometry(x: 200, y: 80, width: 1000, height: 800), for: window)
+        window.prevUnhiddenProportionalPositionInsideWorkspaceRect = nil
+        window.rebaseReopenedGeometry(to: FloatingGeometry(x: -1920, y: -200, width: 1920, height: 1080))
+        XCTAssertEqual(window.pendingReopenedGeometry,
+                       FloatingGeometry(x: -1720, y: -120, width: 1000, height: 800))
+        XCTAssertNil(window.prevUnhiddenProportionalPositionInsideWorkspaceRect)
+        window.cancelReopenedGeometry()
+        XCTAssertNil(window.pendingReopenedGeometryBounds)
+    }
+
 }

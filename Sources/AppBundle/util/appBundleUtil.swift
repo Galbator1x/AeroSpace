@@ -19,10 +19,15 @@ func interceptTermination(_ _signal: Int32) {
 }
 
 @MainActor private var geometryTerminationObserver: NSObjectProtocol?
+@MainActor private var geometryTerminationSignal: DispatchSourceSignal?
 
 @MainActor
 func initTerminationHandler() {
     unsafe _terminationHandler = AppServerTerminationHandler()
+    geometryTerminationSignal = makeGeometryTerminationSignal {
+        flushReopenedGeometry()
+        exit(128 + SIGTERM)
+    }
     geometryTerminationObserver = NotificationCenter.default.addObserver(
         forName: NSApplication.willTerminateNotification, object: nil, queue: .main,
     ) { _ in MainActor.assumeIsolated { flushReopenedGeometry() } }
