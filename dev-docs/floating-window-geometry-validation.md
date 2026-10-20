@@ -11,7 +11,8 @@ The fork is `https://github.com/Galbator1x/AeroSpace`, and the working branch is
 
 - macOS 27.0.1, Apple Silicon, built-in Retina display.
 - Installed app: `/Applications/AeroSpace Main.app`.
-- Current version: `0.0.0-main-corner-fix3.2-early` (debug SwiftPM build).
+- Cleanup source version: `0.0.0-main-corner-fix3.2` (debug SwiftPM build).
+- Installed build remains `0.0.0-main-corner-fix3.2-early` until the cleanup is deployed.
 - Build toolchain: Apple Swift 6.4, Command Line Tools, macOS 26.5 SDK.
 - The macOS 27 Command Line Tools SDK could not build the SwiftUI macros used here.
 - The dotfiles `exec-on-workspace-change` restoration callback remains commented
@@ -29,7 +30,7 @@ The fork is `https://github.com/Galbator1x/AeroSpace`, and the working branch is
   count defers the decision and blocks premature overwriting of saved geometry.
 - For an active app or a visible workspace, apply and check the frame before
   returning from detection rather than waiting for workspace layout.
-- Retain lifecycle and geometry diagnostics for the observation period.
+- Report geometry-store failures on stderr; routine geometry/lifecycle tracing has been removed.
 
 ## Manual results reported by the user
 
@@ -69,24 +70,26 @@ Harness and result are stored in
 `run-early-geometry-regressions.py` and `regression-early-geometry.log`.
 The application also built successfully and passed `codesign --verify --deep --strict`.
 
-## Runtime files
+## Runtime files after cleanup deployment
 
 - LaunchAgent: `~/Library/LaunchAgents/local.dotfiles.aerospace-main.plist`.
 - Geometry: `~/Library/Application Support/dotfiles/aerospace-floating-geometry.json`.
-- Diagnostic log: `~/Library/Logs/dotfiles/aerospace-corner.log`.
-- Standard output: `~/Library/Logs/dotfiles/aerospace-main.stdout.log`.
+- Error output: `~/Library/Logs/dotfiles/aerospace-main.error.log`.
+- Standard output: `/dev/null`.
 - The user's explicit `window-positions/` saves are separate and remain untouched.
 
-The LaunchAgent runs the app executable directly in the Aqua session and appends
-stderr/stdout to the files above. `start-at-login = true` has no effect in this
-upstream debug build. Accessibility approval is required and may need to be
-renewed after changing the app signature.
+The prepared cleanup LaunchAgent runs the app executable directly in the Aqua session, appending
+stderr to the error log and discarding stdout. `start-at-login = true` has no effect
+in this upstream debug build. Accessibility approval is required and may need to
+be renewed after changing the app signature.
 
-Diagnostics contain bundle IDs, window IDs, geometry and lifecycle events, not
-window titles or application content. They currently have no size limit or rotation.
-A measurement during this session was 111,463 bytes / 895 lines total, with 91 lines
-in the preceding ten minutes. Logging performs synchronous local file writes and
-adds some overhead; no controlled performance comparison has been run.
+The earlier diagnostic build recorded bundle IDs, window IDs, geometry and lifecycle
+events. Its temporary probes and additional shutdown geometry reads have now been
+removed from source. Deleting the old runtime logs and applying the prepared
+LaunchAgent configuration remain deployment steps. Geometry-store failures retain a
+short stderr message; no routine tracing or polling has been added. The error file
+currently has no size limit or rotation. Historical build and test outputs are
+retained separately as validation evidence.
 
 ## Checkpoints and rollback
 
@@ -105,5 +108,6 @@ Git does not track the runtime geometry file.
 
 Before subsequent code changes, use a separate branch from the checkpoint.
 Leave the current build in ordinary use for a few days. Keep startup, lock/unlock,
-app reopening and visual flicker as separate observations. PR preparation and
-removal/rotation of diagnostics are deferred.
+app reopening and visual flicker as separate observations. Review and refactoring
+are deferred to a separate step; no functional refactoring is included in the
+diagnostics cleanup.

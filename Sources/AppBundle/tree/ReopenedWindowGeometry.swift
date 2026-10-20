@@ -6,7 +6,7 @@ import Common
     let url = FileManager.default.homeDirectoryForCurrentUser
         .appending(path: "Library/Application Support/dotfiles/aerospace-floating-geometry.json")
     do { return try FloatingGeometryStore(url: url) }
-    catch { cornerTrace("geometry store load failed: \(error)"); return nil }
+    catch { reportFloatingGeometryError("geometry store load failed: \(error)"); return nil }
 }()
 
 extension FloatingGeometry {
@@ -62,25 +62,21 @@ extension MacWindow {
         let liveCount = try await macApp.getAxWindowsCount(.cancellable)
         guard MacWindow.allWindowsMap[windowId] === self, isFloating else { return }
         let lookup = reopenedGeometryStore?.lookup(bundle, liveWindowCount: liveCount) ?? .ready(nil)
-        cornerTrace("reopen lookup id=\(windowId) app=\(bundle) cached=\(macApp.managedWindowCount) live=\(String(describing: liveCount)) result=\(lookup)")
         switch lookup {
             case .pending:
                 return // Retry during layout; never overwrite saved geometry before deciding.
             case .ambiguous:
                 needsReopenedGeometryDecision = false
                 do { try reopenedGeometryStore?.forget(bundle) }
-                catch { cornerTrace("geometry store forget failed: \(error)") }
+                catch { reportFloatingGeometryError("geometry store forget failed: \(error)") }
             case .ready(let geometry):
                 needsReopenedGeometryDecision = false
                 guard let geometry else { return }
                 prepareReopenedGeometry(geometry, for: self)
-                cornerTrace("reopen restore id=\(windowId) app=\(bundle) geometry=\(geometry)")
                 if nodeWorkspace?.isVisible == true || macApp.nsApp.isActive {
-                    cornerTrace("early frame start id=\(windowId)")
-                    let applied = try await applyPreparedGeometryBeforeFocus(to: self) { target in
+                    _ = try await applyPreparedGeometryBeforeFocus(to: self) { target in
                         try await self.macApp.setAxFrameBeforeFocus(self.windowId, geometry: target)
                     }
-                    cornerTrace("early frame complete id=\(windowId) applied=\(applied)")
                 }
                 if nodeWorkspace?.isVisible == true { unhideFromCorner() }
         }
@@ -93,7 +89,7 @@ extension MacWindow {
               MacApp.allAppsMap.values.filter({ $0.rawAppBundleId == bundle }).count == 1 else { return }
         if macApp.managedWindowCount > 1 {
             do { try reopenedGeometryStore?.forget(bundle) }
-            catch { cornerTrace("geometry store forget failed: \(error)") }
+            catch { reportFloatingGeometryError("geometry store forget failed: \(error)") }
             return
         }
         guard macApp.managedWindowCount == 1, !isHiddenInCorner,
@@ -109,6 +105,6 @@ extension MacWindow {
         do {
             try reopenedGeometryStore?.remember(geometry, for: bundle,
                 visibleBounds: FloatingGeometry(workspace.workspaceMonitor.rect), parked: false)
-        } catch { cornerTrace("geometry store save failed: \(error)") }
+        } catch { reportFloatingGeometryError("geometry store save failed: \(error)") }
     }
 }

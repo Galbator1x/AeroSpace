@@ -175,8 +175,6 @@ final class MacApp: AbstractApp {
             try? disableAnimations(app: axApp.threadGuarded, job) {
                 try setFrame(window, topLeft, size, job)
             }
-            let actualRect = try? AppBundle.getAxRect(window: window, job: job)
-            cornerTrace("termination result id=\(windowId) actual=\(String(describing: actualRect))")
             semaphore.signal()
         }
         switch job.isCancelled {

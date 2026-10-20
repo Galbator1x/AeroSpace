@@ -26,24 +26,19 @@ func initTerminationHandler() {
 private struct AppServerTerminationHandler: TerminationHandler {
     @MainActor
     func beforeTermination() {
-        cornerTrace("termination begin pid=\(ProcessInfo.processInfo.processIdentifier) windows=\(MacWindow.allWindowsMap.count)")
         // Make all windows fullscreen before Quit
         for window in MacWindow.allWindowsMap.values {
             // makeAllWindowsVisibleAndRestoreSize may be invoked when something went wrong (e.g. some windows are unbound)
             // that's why it's not allowed to use `.parent` call in here
-            let currentRect = window.macApp.getAxRectForTermination(window.windowId)
-            cornerTrace("termination before id=\(window.windowId) app=\(window.macApp.rawAppBundleId ?? "unknown") workspace=\(window.nodeWorkspace?.name ?? "unbound") hidden=\(window.isHiddenInCorner) raw=\(String(describing: currentRect)) savedOrigin=\(String(describing: window.prevUnhiddenProportionalPositionInsideWorkspaceRect)) savedSize=\(String(describing: window.lastFloatingSize))")
-            let monitor = currentRect?.center.monitorApproximation ?? mainMonitorInfo
+            let monitor = window.macApp.getAxRectForTermination(window.windowId)?.center.monitorApproximation ?? mainMonitorInfo
             let monitorVisibleRect = monitor.visibleRect
             let windowSize = window.lastFloatingSize ?? CGSize(width: monitorVisibleRect.width, height: monitorVisibleRect.height)
             let point = CGPoint(
                 x: (monitorVisibleRect.width - windowSize.width) / 2,
                 y: (monitorVisibleRect.height - windowSize.height) / 2,
             )
-            cornerTrace("termination request id=\(window.windowId) position=\(point) size=\(windowSize)")
             window.macApp.setAxFrameForTermination(window.windowId, point, windowSize)
         }
-        cornerTrace("termination frames finished")
         if isDebug {
             let semaphore = DispatchSemaphore(value: 0)
             // Use Task.detached to avoid inheriting @MainActor.
