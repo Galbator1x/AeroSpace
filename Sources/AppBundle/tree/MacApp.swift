@@ -13,6 +13,7 @@ final class MacApp: AbstractApp {
     private let appAxSubscriptions: ThreadGuardedValue<[AxSubscription]> // keep subscriptions in memory
     private let windows: ThreadGuardedValue<[UInt32: AxWindow]> = .init([:])
     private var windowsCount = 0
+    var managedWindowCount: Int { windowsCount }
     var lastNativeFocusedWindowId: UInt32? = nil
     private var thread: Thread?
     private var setFrameJobs: [UInt32: RunLoopJob] = [:]
@@ -147,6 +148,17 @@ final class MacApp: AbstractApp {
         }
     }
 
+    func setAxFrameBeforeFocus(_ windowId: UInt32, geometry: FloatingGeometry) async throws -> Bool {
+        setFrameJobs.removeValue(forKey: windowId)?.cancel()
+        return try await withWindow(windowId, .cancellable) { [axApp] window, job in
+            try disableAnimations(app: axApp.threadGuarded, job) {
+                try setFrame(window, geometry.point, geometry.size, job)
+            }
+            guard let actual = try AppBundle.getAxRect(window: window, job: job) else { return false }
+            return geometry.approximatelyEquals(FloatingGeometry(actual))
+        } == true
+    }
+
     func setAxFrame(_ windowId: UInt32, _ topLeft: CGPoint?, _ size: CGSize?) {
         setFrameJobs.removeValue(forKey: windowId)?.cancel()
         setFrameJobs[windowId] = withWindowAsync(windowId, .cancellable) { [axApp] window, job in
@@ -163,6 +175,8 @@ final class MacApp: AbstractApp {
             try? disableAnimations(app: axApp.threadGuarded, job) {
                 try setFrame(window, topLeft, size, job)
             }
+            let actualRect = try? AppBundle.getAxRect(window: window, job: job)
+            cornerTrace("termination result id=\(windowId) actual=\(String(describing: actualRect))")
             semaphore.signal()
         }
         switch job.isCancelled {

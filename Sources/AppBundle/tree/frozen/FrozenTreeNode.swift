@@ -35,10 +35,14 @@ struct FrozenContainer: Sendable {
 struct FrozenWindow: Sendable {
     let id: UInt32
     let weight: CGFloat
+    let unhiddenProportionalPosition: CGPoint?
+    let lastFloatingSize: CGSize?
 
     @MainActor init(_ window: Window) {
         id = window.windowId
         weight = getWeightOrNil(window) ?? 1
+        unhiddenProportionalPosition = window.prevUnhiddenProportionalPositionInsideWorkspaceRect
+        lastFloatingSize = window.lastFloatingSize
     }
 }
 

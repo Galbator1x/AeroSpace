@@ -71,7 +71,13 @@ extension Window {
     @MainActor
     fileprivate func layoutFloatingWindow(_ context: LayoutContext) async throws {
         let workspace = context.workspace
+        if let window = self as? MacWindow, window.needsReopenedGeometryDecision {
+            try await window.restoreReopenedGeometry(restore: true)
+        }
         let windowRect = try await getAxRect(.cancellable) // Probably not idempotent
+        if let windowRect, let window = self as? MacWindow {
+            window.rememberReopenedGeometry(windowRect)
+        }
         let currentMonitor = windowRect?.center.monitorApproximation
         if let currentMonitor, let windowRect, workspace != currentMonitor.activeWorkspace {
             let windowTopLeftCorner = windowRect.topLeftCorner

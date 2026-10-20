@@ -3,6 +3,7 @@ import Common
 import Foundation
 
 @MainActor public func initAppBundle() {
+    cornerTrace("session begin pid=\(ProcessInfo.processInfo.processIdentifier) version=\(aeroSpaceAppVersion)")
     Task.startUnstructured {
         initTerminationHandler()
         unsafe _isCli = false

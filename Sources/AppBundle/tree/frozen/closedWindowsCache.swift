@@ -39,6 +39,14 @@ struct FrozenWorkspace: Sendable {
 
 @MainActor func cacheClosedWindowIfNeeded() {
     let allWs = Workspace.all
+    // Layout snapshots may be reused, but corner positions change as workspaces are hidden and shown.
+    var geometry = closedWindowsCache.floatingWindowGeometry
+    for workspace in allWs {
+        for window in workspace.floatingWindows {
+            geometry[window.windowId] = FrozenWindow(window)
+        }
+    }
+    closedWindowsCache.floatingWindowGeometry = geometry
     let allWindowIds = allWs.flatMap { collectAllWindowIdsRecursive($0) }.toSet()
     if allWindowIds.isSubset(of: closedWindowsCache.windowIds) {
         return // already cached
@@ -47,6 +55,7 @@ struct FrozenWorkspace: Sendable {
         workspaces: allWs.map { FrozenWorkspace($0) },
         monitors: monitorInfos.map(FrozenMonitor.init),
         windowIds: allWindowIds,
+        floatingWindowGeometry: geometry,
     )
 }
 
@@ -63,7 +72,16 @@ struct FrozenWorkspace: Sendable {
             .singleOrNil()?
             .setActiveWorkspace(workspace)
         for frozenWindow in frozenWorkspace.floatingWindows {
-            MacWindow.get(byId: frozenWindow.id)?.bindAsFloatingWindow(to: workspace)
+            if let window = MacWindow.get(byId: frozenWindow.id) {
+                // Only restore geometry for the newly detected window; existing windows may have newer state.
+                if window === newlyDetectedWindow {
+                    let geometry = closedWindowsCache.floatingWindowGeometry[window.windowId] ?? frozenWindow
+                    window.prevUnhiddenProportionalPositionInsideWorkspaceRect = geometry.unhiddenProportionalPosition
+                    window.lastFloatingSize = geometry.lastFloatingSize
+                    cornerTrace("restore cache id=\(window.windowId) origin=\(String(describing: geometry.unhiddenProportionalPosition))")
+                }
+                window.bindAsFloatingWindow(to: workspace)
+            }
         }
         for frozenWindow in frozenWorkspace.macosUnconventionalWindows { // Will get fixed by normalizations
             MacWindow.get(byId: frozenWindow.id)?.bindAsFloatingWindow(to: workspace)

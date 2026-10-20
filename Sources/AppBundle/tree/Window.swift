@@ -5,6 +5,8 @@ open class Window: TreeNode, Hashable {
     let windowId: UInt32
     let app: any AbstractApp
     var lastFloatingSize: CGSize?
+    var pendingReopenedGeometry: FloatingGeometry?
+    var prevUnhiddenProportionalPositionInsideWorkspaceRect: CGPoint?
     var isFullscreen: Bool = false
     var noOuterGapsInFullscreen: Bool = false
     var layoutReason: LayoutReason = .standard

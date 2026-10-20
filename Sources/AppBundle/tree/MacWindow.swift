@@ -3,7 +3,8 @@ import Common
 
 final class MacWindow: Window {
     let macApp: MacApp
-    private var prevUnhiddenProportionalPositionInsideWorkspaceRect: CGPoint?
+    var supportsReopenedGeometry = false
+    var needsReopenedGeometryDecision = true
 
     @MainActor
     private init(_ id: UInt32, _ actor: MacApp, lastFloatingSize: CGSize?, parent: NonLeafTreeNodeObject, adaptiveWeight: CGFloat, index: Int) {
@@ -19,6 +20,7 @@ final class MacWindow: Window {
     static func getOrRegister(windowId: UInt32, macApp: MacApp) async throws -> MacWindow {
         if let existing = allWindowsMap[windowId] { return existing }
         let rect = try await macApp.getAxRect(windowId, .cancellable)
+        cornerTrace("discovery id=\(windowId) app=\(macApp.rawAppBundleId ?? "unknown") startup=\(isStartup) raw=\(String(describing: rect))")
         let data = try await unbindAndGetBindingDataForNewWindow(
             windowId,
             macApp,
@@ -31,13 +33,16 @@ final class MacWindow: Window {
 
         // atomic synchronous section
         if let existing = allWindowsMap[windowId] { return existing }
+        cornerTrace("register id=\(windowId) app=\(macApp.rawAppBundleId ?? "unknown") initialSize=\(String(describing: rect?.size))")
         let window = MacWindow(windowId, macApp, lastFloatingSize: rect?.size, parent: data.parent, adaptiveWeight: data.adaptiveWeight, index: data.index)
         allWindowsMap[windowId] = window
 
         try await debugWindowsIfRecording(window, .cancellable)
-        if try await !restoreClosedWindowsCacheIfNeeded(newlyDetectedWindow: window) {
+        let restoredCache = try await restoreClosedWindowsCacheIfNeeded(newlyDetectedWindow: window)
+        if !restoredCache {
             await runOnWindowDetected(ifConventional: window)
         }
+        try await window.restoreReopenedGeometry(restore: !restoredCache)
         return window
     }
 
@@ -80,6 +85,7 @@ final class MacWindow: Window {
         if MacWindow.allWindowsMap.removeValue(forKey: windowId) == nil {
             return
         }
+        cornerTrace("garbage collect id=\(windowId) hidden=\(isHiddenInCorner)")
         if !skipClosedWindowsCache { cacheClosedWindowIfNeeded() }
         let parent = unbindFromParent().parent
         let deadWindowWorkspace = parent.nodeWorkspace
@@ -121,12 +127,15 @@ final class MacWindow: Window {
     // todo it's part of the window layout and should be moved to layoutRecursive.swift
     @MainActor
     func hideInCorner(_ corner: OptimalHideCorner) async throws {
+        if needsReopenedGeometryDecision { try await restoreReopenedGeometry(restore: true) }
         guard let nodeMonitor else { return }
         // Don't accidentally override prevUnhiddenEmulationPosition in case of subsequent `hideInCorner` calls
         if !isHiddenInCorner {
             guard let windowRect = try await getAxRect(.cancellable) else { return }
             // Check for isHiddenInCorner for the second time because of the suspension point above
             if !isHiddenInCorner {
+                rememberReopenedGeometry(windowRect, beforeParking: true)
+                cornerTrace("save origin id=\(windowId) rect=\(windowRect)")
                 let topLeftCorner = windowRect.topLeftCorner
                 let monitorRect = windowRect.center.monitorApproximation.rect // Similar to layoutFloatingWindow. Non idempotent
                 let absolutePoint = topLeftCorner - monitorRect.topLeftCorner
@@ -174,7 +183,8 @@ final class MacWindow: Window {
                 newX = newX.coerce(in: workspaceRect.minX ... max(workspaceRect.minX, workspaceRect.maxX - windowWidth))
                 newY = newY.coerce(in: workspaceRect.minY ... max(workspaceRect.minY, workspaceRect.maxY - windowHeight))
 
-                setAxFrame(CGPoint(x: newX, y: newY), nil)
+                cornerTrace("unhide queue id=\(windowId) saved=\(prevUnhiddenProportionalPositionInsideWorkspaceRect) position=\(newX),\(newY)")
+                setAxFrame(CGPoint(x: newX, y: newY), pendingReopenedGeometry?.size)
             case .macosNativeFullscreenWindow, .macosNativeHiddenAppWindow, .macosNativeMinimizedWindow,
                  .macosPopupWindow, .tiling, .rootTilingContainer, .shimContainerRelation: break
         }
