@@ -83,7 +83,7 @@ final class MacWindow: Window {
             return
         }
         if !skipClosedWindowsCache { cacheClosedWindowIfNeeded() }
-        cancelReopenedGeometryApplication()
+        cancelReopenedGeometryReveal()
         let parent = unbindFromParent().parent
         let deadWindowWorkspace = parent.nodeWorkspace
         let focus = focus
@@ -124,6 +124,7 @@ final class MacWindow: Window {
     // todo it's part of the window layout and should be moved to layoutRecursive.swift
     @MainActor
     func hideInCorner(_ corner: OptimalHideCorner) async throws {
+        cancelReopenedGeometryReveal()
         if needsReopenedGeometryDecision { try await restoreReopenedGeometry() }
         guard let nodeMonitor else { return }
         // Don't accidentally override prevUnhiddenEmulationPosition in case of subsequent `hideInCorner` calls
@@ -171,6 +172,10 @@ final class MacWindow: Window {
         macApp.setAxFrame(windowId, topLeft, size)
     }
 
+    @MainActor override func setAxFrameBeforeFocus(_ geometry: FloatingGeometry) async throws -> Bool {
+        try await macApp.setAxFrameBeforeFocus(windowId, geometry: geometry)
+    }
+
     override func getAxRect(_ cm: CancellationMode) async throws -> Rect? {
         try await macApp.getAxRect(windowId, cm)
     }
@@ -178,11 +183,23 @@ final class MacWindow: Window {
 
 extension Window {
     @MainActor
-    func unhideFromCorner() {
+    func unhideFromCorner() async throws {
         if let window = self as? MacWindow, needsReopenedGeometryDecision || pendingReopenedGeometry != nil {
             invalidateAmbiguousReopenedGeometry(for: window.macApp)
         }
         rebaseReopenedGeometryIfNeeded()
+        if isFloating, prevUnhiddenProportionalPositionInsideWorkspaceRect != nil, pendingReopenedGeometry != nil {
+            let revealId = UUID()
+            reopenedGeometryRevealId = revealId
+            defer {
+                if reopenedGeometryRevealId == revealId { reopenedGeometryRevealId = nil }
+            }
+            // Retain the return position until AX confirms the frame. Only the current reveal may fall back.
+            _ = try await applyPreparedGeometryBeforeFocus(to: self) { target in
+                try await self.setAxFrameBeforeFocus(target)
+            }
+            guard reopenedGeometryRevealId == revealId else { return }
+        }
         guard let prevUnhiddenProportionalPositionInsideWorkspaceRect else { return }
         guard let nodeWorkspace else { return } // hiding only makes sense for workspace windows
         guard let parent else { return }
@@ -191,11 +208,6 @@ extension Window {
             // Just a small optimization to avoid unnecessary AX calls for non floating windows
             // Tiling windows should be unhidden with layoutRecursive anyway
             case .floatingWindow:
-                if let pending = pendingReopenedGeometry {
-                    setReopenedGeometryFrame(pending)
-                    self.prevUnhiddenProportionalPositionInsideWorkspaceRect = nil
-                    return
-                }
                 let workspaceRect = nodeWorkspace.workspaceMonitor.rect
                 var newX = workspaceRect.topLeftX + workspaceRect.width * prevUnhiddenProportionalPositionInsideWorkspaceRect.x
                 var newY = workspaceRect.topLeftY + workspaceRect.height * prevUnhiddenProportionalPositionInsideWorkspaceRect.y

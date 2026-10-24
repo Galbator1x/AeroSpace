@@ -247,3 +247,39 @@ sources are used for packaging and then restored to their tracked contents.
 Accessibility may need to be enabled again after ad-hoc signing. Reboot and repeated
 interactive lock/unlock remain manual checks; the previously deferred popup/dialog
 reclassification case is unchanged.
+
+
+## Acknowledged reveal and concurrent ownership (fix5, 2026-10-24)
+
+The follow-up review found that cancelling a queued restored frame after unhide
+had cleared the parking marker could strand a window in its corner. A deferred
+frame fixture reproduced this on fix4: the expected return frame was
+`100,50 600x400`, but the actual frame remained `1919,1079 600x400`.
+
+Pending restored windows now await AX frame acknowledgement before discarding
+their real return position. Failed or ambiguity-cancelled applications can fall
+back to ordinary unhiding. Parent cancellation retains the return position for a
+later layout pass. Ordinary reveals without a pending target retain their existing
+queued behavior.
+
+A reveal has an invocation identity in addition to the restore/application
+identities. Replacing an application cancels its predecessor; a superseded reveal
+cannot execute fallback or confirm a newer parking state. Hiding or garbage
+collection invalidates reveal ownership. Explicit mouse/fullscreen cancellation
+also invalidates it, while ambiguity permits the latest owner to reveal normally.
+
+The regression fixture can queue writes or suspend acknowledgement using the
+project's cancellation-aware latch. All 29 geometry test methods passed with Swift
+6 language mode, the project's upcoming feature and strict memory safety. Checks
+cover queued cancellation, ambiguity while acknowledgement is suspended, parent
+cancellation, successful acknowledgement, two overlapping reveals, newer parking
+and fullscreen during a suspended reveal. The full debug product also built with
+Swift 6.4 / macOS 26.5 SDK / SwiftPM native. SIGTERM flush is checked separately
+against the compiled AppBundle objects before packaging.
+
+For this build, two dependencies were obtained as shallow temporary Git mirrors
+because full HTTPS history downloads were slow. Checkout revisions remain exactly
+those in Package.resolved; no dependency version or tracked manifest change is
+included. Temporary mirror configuration, dependency/build/module caches and
+harness files are removed after deployment; signed packages, validation output
+and the prior installed application/geometry are retained in aerospace-build.

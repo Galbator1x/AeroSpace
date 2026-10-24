@@ -8,6 +8,7 @@ open class Window: TreeNode, Hashable {
     var reopenedGeometry: ReopenedGeometryState = .undecided
     var reopenedGeometryApplication: (id: UUID, task: Task<Bool, any Error>)?
     var reopenedGeometryFrameJob: RunLoopJob?
+    var reopenedGeometryRevealId: UUID?
     var prevUnhiddenProportionalPositionInsideWorkspaceRect: CGPoint?
     var isFullscreen: Bool = false
     var noOuterGapsInFullscreen: Bool = false
@@ -44,6 +45,13 @@ open class Window: TreeNode, Hashable {
     func getCenter(_ cm: CancellationMode) async throws -> CGPoint? { try await getAxRect(cm)?.center }
 
     func setAxFrame(_ topLeft: CGPoint?, _ size: CGSize?) { die("Not implemented") }
+
+    @MainActor
+    func setAxFrameBeforeFocus(_ geometry: FloatingGeometry) async throws -> Bool {
+        setAxFrame(geometry.point, geometry.size)
+        guard let actual = try await getAxRect(.cancellable) else { return false }
+        return geometry.approximatelyEquals(FloatingGeometry(actual))
+    }
 }
 
 enum LayoutReason: Equatable {

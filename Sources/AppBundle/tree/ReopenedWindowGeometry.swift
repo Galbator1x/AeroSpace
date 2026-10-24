@@ -69,6 +69,7 @@ func applyPreparedGeometryBeforeFocus(
 ) async throws -> Bool {
     window.rebaseReopenedGeometryIfNeeded()
     guard let restore = window.reopenedGeometry.pending else { return false }
+    window.cancelReopenedGeometryApplication()
     let id = UUID()
     let task = Task { @MainActor in
         try checkCancellation()
@@ -90,7 +91,8 @@ func applyPreparedGeometryBeforeFocus(
         throw CancellationError()
     }
     window.rebaseReopenedGeometryIfNeeded()
-    guard applied, window.reopenedGeometry.pending?.id == restore.id,
+    guard applied, window.reopenedGeometryApplication?.id == id,
+          window.reopenedGeometry.pending?.id == restore.id,
           window.pendingReopenedGeometry == restore.target else { return false }
     window.prevUnhiddenProportionalPositionInsideWorkspaceRect = nil
     window.lastFloatingSize = restore.target.size
@@ -101,7 +103,7 @@ func applyPreparedGeometryBeforeFocus(
 @discardableResult
 func invalidateAmbiguousReopenedGeometry(_ windows: [Window], windowCount: Int, appCount: Int = 1) -> Bool {
     guard windowCount > 1 || appCount > 1 else { return false }
-    for window in windows { window.cancelReopenedGeometry() }
+    for window in windows { window.cancelReopenedGeometry(allowRevealFallback: true) }
     return true
 }
 
@@ -137,10 +139,10 @@ extension MacWindow {
         guard case .ready = decision, pendingReopenedGeometry != nil else { return }
         if nodeWorkspace?.isVisible == true || macApp.nsApp.isActive {
             _ = try await applyPreparedGeometryBeforeFocus(to: self) { target in
-                try await self.macApp.setAxFrameBeforeFocus(self.windowId, geometry: target)
+                try await self.setAxFrameBeforeFocus(target)
             }
         }
-        if nodeWorkspace?.isVisible == true { unhideFromCorner() }
+        if nodeWorkspace?.isVisible == true { try await unhideFromCorner() }
     }
 
     @MainActor
@@ -227,8 +229,15 @@ extension Window {
     }
 
     @MainActor
-    func cancelReopenedGeometry() {
+    func cancelReopenedGeometryReveal() {
+        reopenedGeometryRevealId = nil
+        cancelReopenedGeometryApplication()
+    }
+
+    @MainActor
+    func cancelReopenedGeometry(allowRevealFallback: Bool = false) {
         reopenedGeometry = .finished
+        if !allowRevealFallback { reopenedGeometryRevealId = nil }
         cancelReopenedGeometryApplication()
     }
 }
