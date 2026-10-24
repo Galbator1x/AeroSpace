@@ -4,7 +4,6 @@ import Common
 final class MacWindow: Window {
     let macApp: MacApp
     var supportsReopenedGeometry = false
-    var needsReopenedGeometryDecision = true
 
     @MainActor
     private init(_ id: UInt32, _ actor: MacApp, lastFloatingSize: CGSize?, parent: NonLeafTreeNodeObject, adaptiveWeight: CGFloat, index: Int) {
@@ -40,7 +39,7 @@ final class MacWindow: Window {
         if !restoredCache {
             await runOnWindowDetected(ifConventional: window)
         }
-        try await window.restoreReopenedGeometry(restore: !restoredCache)
+        try await window.restoreReopenedGeometry()
         return window
     }
 
@@ -84,6 +83,7 @@ final class MacWindow: Window {
             return
         }
         if !skipClosedWindowsCache { cacheClosedWindowIfNeeded() }
+        cancelReopenedGeometryApplication()
         let parent = unbindFromParent().parent
         let deadWindowWorkspace = parent.nodeWorkspace
         let focus = focus
@@ -124,7 +124,7 @@ final class MacWindow: Window {
     // todo it's part of the window layout and should be moved to layoutRecursive.swift
     @MainActor
     func hideInCorner(_ corner: OptimalHideCorner) async throws {
-        if needsReopenedGeometryDecision { try await restoreReopenedGeometry(restore: true) }
+        if needsReopenedGeometryDecision { try await restoreReopenedGeometry() }
         guard let nodeMonitor else { return }
         // Don't accidentally override prevUnhiddenEmulationPosition in case of subsequent `hideInCorner` calls
         if !isHiddenInCorner {
@@ -159,35 +159,6 @@ final class MacWindow: Window {
         setAxFrame(p, nil)
     }
 
-    @MainActor
-    func unhideFromCorner() {
-        rebaseReopenedGeometryIfNeeded()
-        guard let prevUnhiddenProportionalPositionInsideWorkspaceRect else { return }
-        guard let nodeWorkspace else { return } // hiding only makes sense for workspace windows
-        guard let parent else { return }
-
-        switch getChildParentRelation(child: self, parent: parent) {
-            // Just a small optimization to avoid unnecessary AX calls for non floating windows
-            // Tiling windows should be unhidden with layoutRecursive anyway
-            case .floatingWindow:
-                let workspaceRect = nodeWorkspace.workspaceMonitor.rect
-                var newX = workspaceRect.topLeftX + workspaceRect.width * prevUnhiddenProportionalPositionInsideWorkspaceRect.x
-                var newY = workspaceRect.topLeftY + workspaceRect.height * prevUnhiddenProportionalPositionInsideWorkspaceRect.y
-                // todo we probably should replace lastFloatingSize with proper floating window sizing
-                // https://github.com/nikitabobko/AeroSpace/issues/1519
-                let windowWidth = lastFloatingSize?.width ?? 0
-                let windowHeight = lastFloatingSize?.height ?? 0
-                newX = newX.coerce(in: workspaceRect.minX ... max(workspaceRect.minX, workspaceRect.maxX - windowWidth))
-                newY = newY.coerce(in: workspaceRect.minY ... max(workspaceRect.minY, workspaceRect.maxY - windowHeight))
-
-                setAxFrame(CGPoint(x: newX, y: newY), pendingReopenedGeometry?.size)
-            case .macosNativeFullscreenWindow, .macosNativeHiddenAppWindow, .macosNativeMinimizedWindow,
-                 .macosPopupWindow, .tiling, .rootTilingContainer, .shimContainerRelation: break
-        }
-
-        self.prevUnhiddenProportionalPositionInsideWorkspaceRect = nil
-    }
-
     override var isHiddenInCorner: Bool {
         prevUnhiddenProportionalPositionInsideWorkspaceRect != nil
     }
@@ -206,6 +177,43 @@ final class MacWindow: Window {
 }
 
 extension Window {
+    @MainActor
+    func unhideFromCorner() {
+        if let window = self as? MacWindow, needsReopenedGeometryDecision || pendingReopenedGeometry != nil {
+            invalidateAmbiguousReopenedGeometry(for: window.macApp)
+        }
+        rebaseReopenedGeometryIfNeeded()
+        guard let prevUnhiddenProportionalPositionInsideWorkspaceRect else { return }
+        guard let nodeWorkspace else { return } // hiding only makes sense for workspace windows
+        guard let parent else { return }
+
+        switch getChildParentRelation(child: self, parent: parent) {
+            // Just a small optimization to avoid unnecessary AX calls for non floating windows
+            // Tiling windows should be unhidden with layoutRecursive anyway
+            case .floatingWindow:
+                if let pending = pendingReopenedGeometry {
+                    setReopenedGeometryFrame(pending)
+                    self.prevUnhiddenProportionalPositionInsideWorkspaceRect = nil
+                    return
+                }
+                let workspaceRect = nodeWorkspace.workspaceMonitor.rect
+                var newX = workspaceRect.topLeftX + workspaceRect.width * prevUnhiddenProportionalPositionInsideWorkspaceRect.x
+                var newY = workspaceRect.topLeftY + workspaceRect.height * prevUnhiddenProportionalPositionInsideWorkspaceRect.y
+                // todo we probably should replace lastFloatingSize with proper floating window sizing
+                // https://github.com/nikitabobko/AeroSpace/issues/1519
+                let windowWidth = lastFloatingSize?.width ?? 0
+                let windowHeight = lastFloatingSize?.height ?? 0
+                newX = newX.coerce(in: workspaceRect.minX ... max(workspaceRect.minX, workspaceRect.maxX - windowWidth))
+                newY = newY.coerce(in: workspaceRect.minY ... max(workspaceRect.minY, workspaceRect.maxY - windowHeight))
+
+                setAxFrame(CGPoint(x: newX, y: newY), nil)
+            case .macosNativeFullscreenWindow, .macosNativeHiddenAppWindow, .macosNativeMinimizedWindow,
+                 .macosPopupWindow, .tiling, .rootTilingContainer, .shimContainerRelation: break
+        }
+
+        self.prevUnhiddenProportionalPositionInsideWorkspaceRect = nil
+    }
+
     @MainActor
     func relayoutWindow(on workspace: Workspace, _ cm: CancellationMode, forceTile: Bool = false) async throws {
         let data = forceTile

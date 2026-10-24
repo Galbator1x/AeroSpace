@@ -37,12 +37,14 @@ struct FrozenWindow: Sendable {
     let weight: CGFloat
     let unhiddenProportionalPosition: CGPoint?
     let lastFloatingSize: CGSize?
+    let reopenedGeometry: ReopenedGeometryState
 
     @MainActor init(_ window: Window) {
         id = window.windowId
         weight = getWeightOrNil(window) ?? 1
         unhiddenProportionalPosition = window.prevUnhiddenProportionalPositionInsideWorkspaceRect
         lastFloatingSize = window.lastFloatingSize
+        reopenedGeometry = window.reopenedGeometry
     }
 }
 

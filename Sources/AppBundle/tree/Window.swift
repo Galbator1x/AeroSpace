@@ -5,9 +5,9 @@ open class Window: TreeNode, Hashable {
     let windowId: UInt32
     let app: any AbstractApp
     var lastFloatingSize: CGSize?
-    var reopenedGeometryRetryCount = 0
-    var pendingReopenedGeometryBounds: FloatingGeometry?
-    var pendingReopenedGeometry: FloatingGeometry?
+    var reopenedGeometry: ReopenedGeometryState = .undecided
+    var reopenedGeometryApplication: (id: UUID, task: Task<Bool, any Error>)?
+    var reopenedGeometryFrameJob: RunLoopJob?
     var prevUnhiddenProportionalPositionInsideWorkspaceRect: CGPoint?
     var isFullscreen: Bool = false
     var noOuterGapsInFullscreen: Bool = false

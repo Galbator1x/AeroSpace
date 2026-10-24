@@ -78,6 +78,7 @@ struct FrozenWorkspace: Sendable {
                     let geometry = closedWindowsCache.floatingWindowGeometry[window.windowId] ?? frozenWindow
                     window.prevUnhiddenProportionalPositionInsideWorkspaceRect = geometry.unhiddenProportionalPosition
                     window.lastFloatingSize = geometry.lastFloatingSize
+                    window.reopenedGeometry = geometry.reopenedGeometry
                 }
                 window.bindAsFloatingWindow(to: workspace)
             }

@@ -72,7 +72,7 @@ extension Window {
     fileprivate func layoutFloatingWindow(_ context: LayoutContext) async throws {
         let workspace = context.workspace
         if let window = self as? MacWindow, window.needsReopenedGeometryDecision {
-            try await window.restoreReopenedGeometry(restore: true)
+            try await window.restoreReopenedGeometry()
         }
         let windowRect = try await getAxRect(.cancellable) // Probably not idempotent
         if let windowRect, let window = self as? MacWindow {

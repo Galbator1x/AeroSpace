@@ -41,5 +41,18 @@ final class TestWindow: Window, CustomStringConvertible {
         _rect.map { CGSize(width: $0.width, height: $0.height) }
     }
 
+    override func setAxFrame(_ point: CGPoint?, _ size: CGSize?) {
+        if let point {
+            _rect?.topLeftX = point.x
+            _rect?.topLeftY = point.y
+        }
+        if let size {
+            _rect?.width = size.width
+            _rect?.height = size.height
+        }
+    }
+
+    override var isHiddenInCorner: Bool { prevUnhiddenProportionalPositionInsideWorkspaceRect != nil }
+
     override func isMacosFullscreen(_ cm: CancellationMode) async throws -> Bool { isMacosFullscreenForTest }
 }

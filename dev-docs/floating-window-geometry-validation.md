@@ -192,3 +192,58 @@ storage can delay the flushing shutdown path.
 Evidence in the local build directory: `run-signal-monitor-regressions.py`,
 `regression-signal-monitor.log`, `build-signal-monitor.log`, and
 `test-geometry-sigterm.swift`. The installed working application remains unchanged.
+
+
+## Restore lifecycle fixes (2026-10-24)
+
+The follow-up implementation addresses four review findings: a pending size lost
+on same-ID redetection, prepared targets surviving a second window, mouse gestures
+not cancelling an undecided lookup, and fullscreen commands being undone by a
+later restore pass.
+
+- `ReopenedGeometryState` owns the undecided/pending/finished transition. A pending
+  record keeps its target, monitor bounds, retry budget and identity together.
+- The actual corner-hiding position and floating size remain separate from the
+  target. Preparing or cancelling a restore does not make a visible window look
+  hidden or discard a parked window's return position.
+- Closed-window snapshots preserve the whole restore state, including cancelled
+  decisions and retries already spent. Redetection no longer skips a lost target
+  merely because the layout cache was recovered.
+- Application refresh and the pre-unhide path invalidate all prepared targets for
+  an ambiguous bundle. Pending early AX tasks and queued frame jobs are cancelled.
+- Lookup checks the decision again after suspension. A late AX result cannot undo
+  a mouse gesture or a fullscreen command. Fullscreen also resets the old layout
+  snapshot so it cannot resurrect the cancelled target.
+- Early application checks both restore identity and parent-task cancellation.
+  Cancelling one restore does not swallow cancellation of the surrounding refresh.
+
+The debug application built with Swift 6.4, the macOS 26.5 SDK and SwiftPM native.
+The original cache-redetection and fullscreen regression tests failed against
+`d60e5bad` before the fix. All 22 methods in the three geometry test files then
+passed against the real compiled AppBundle objects, using Swift 6 language mode,
+`NonisolatedNonsendingByDefault` and strict memory safety with no compiler warnings.
+The tests include actual frame writes through the TestWindow fixture, retained
+retry budgets, ambiguity with a parked window, cancellation during lookup and AX
+application, duplicate app instances and simultaneous restore/parent cancellation.
+
+The CLT fallback runner is now checked in:
+
+```sh
+python3 script/test-floating-geometry.py \
+  --build-dir /path/to/scratch/arm64-apple-macosx/debug \
+  --sdk /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk
+```
+
+Build the `AeroSpaceApp` product first. `--filter` selects a test-name substring.
+The runner links the actual product object files and substitutes assertion helpers
+for XCTest; it does not replace Apple's runner or real Accessibility/UI testing.
+Temporary harness sources, executables, JSON files and module caches are removed
+when the runner exits. The geometry JSON schema and runtime paths are unchanged.
+
+Deployment uses the existing app bundle and LaunchAgent layout. Before replacement,
+retain a copy of the old signed bundle and a flushed geometry snapshot. The new
+bundle records the source commit in `DotfilesSourceRevision`; generated version/hash
+sources are used for packaging and then restored to their tracked contents.
+Accessibility may need to be enabled again after ad-hoc signing. Reboot and repeated
+interactive lock/unlock remain manual checks; the previously deferred popup/dialog
+reclassification case is unchanged.

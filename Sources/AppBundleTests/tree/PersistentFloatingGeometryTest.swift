@@ -25,9 +25,8 @@ final class PersistentFloatingGeometryTest: XCTestCase {
         let newWindow = TestWindow.new(id: 9999, parent: Workspace.get(byName: "E").floatingWindowsContainer)
         prepareReopenedGeometry(wanted, for: newWindow)
         XCTAssertEqual(newWindow.pendingReopenedGeometry, wanted)
-        XCTAssertEqual(newWindow.lastFloatingSize, wanted.size)
-        XCTAssertEqual(newWindow.prevUnhiddenProportionalPositionInsideWorkspaceRect,
-                       CGPoint(x: 286.0 / 1920, y: 49.0 / 1080))
+        XCTAssertNil(newWindow.lastFloatingSize)
+        XCTAssertNil(newWindow.prevUnhiddenProportionalPositionInsideWorkspaceRect)
     }
 
     func testRestoreClampsToCurrentMonitor() {
@@ -42,16 +41,16 @@ final class PersistentFloatingGeometryTest: XCTestCase {
         prepareReopenedGeometry(wanted, for: window)
         let failed = try await applyPreparedGeometryBeforeFocus(to: window) { _ in false }
         XCTAssertFalse(failed)
-        XCTAssertNotNil(window.prevUnhiddenProportionalPositionInsideWorkspaceRect)
+        XCTAssertNotNil(window.pendingReopenedGeometry)
         do {
             _ = try await applyPreparedGeometryBeforeFocus(to: window) { _ in throw CancellationError() }
             XCTFail("Expected cancellation")
         } catch is CancellationError {}
-        XCTAssertNotNil(window.prevUnhiddenProportionalPositionInsideWorkspaceRect)
+        XCTAssertNotNil(window.pendingReopenedGeometry)
         var completed = false
         let applied = try await applyPreparedGeometryBeforeFocus(to: window) { geometry in
             XCTAssertEqual(geometry, wanted)
-            XCTAssertNotNil(window.prevUnhiddenProportionalPositionInsideWorkspaceRect)
+            XCTAssertNotNil(window.pendingReopenedGeometry)
             await Task.yield()
             completed = true
             return true
@@ -68,7 +67,7 @@ final class PersistentFloatingGeometryTest: XCTestCase {
         let adjusted = FloatingGeometry(x: 286, y: 49, width: 1200, height: 907)
         prepareReopenedGeometry(wanted, for: window)
         XCTAssertFalse(confirmReopenedGeometry(adjusted, for: window, visible: false))
-        XCTAssertEqual(window.reopenedGeometryRetryCount, 0)
+        XCTAssertEqual(window.reopenedGeometry.pending?.retryCount, 0)
         for _ in 0..<3 {
             XCTAssertFalse(confirmReopenedGeometry(adjusted, for: window, visible: true))
         }
@@ -160,18 +159,19 @@ final class PersistentFloatingGeometryTest: XCTestCase {
         let window = TestWindow.new(id: 9999, parent: Workspace.get(byName: "E").floatingWindowsContainer)
         let wanted = FloatingGeometry(x: 286, y: 49, width: 1116, height: 907)
         prepareReopenedGeometry(wanted, for: window)
-        window.reopenedGeometryRetryCount = 2
+        var restore = window.reopenedGeometry.pending!
+        restore.retryCount = 2
+        window.reopenedGeometry = .pending(restore)
         let otherMonitor = FloatingGeometry(x: 1920, y: 0, width: 1280, height: 720)
         window.rebaseReopenedGeometry(to: otherMonitor)
         let target = FloatingGeometry(x: 2084, y: 0, width: 1116, height: 720)
         XCTAssertEqual(window.pendingReopenedGeometry, target)
-        XCTAssertEqual(window.pendingReopenedGeometryBounds, otherMonitor)
-        XCTAssertEqual(window.lastFloatingSize, target.size)
-        XCTAssertEqual(window.reopenedGeometryRetryCount, 0)
-        XCTAssertEqual(window.prevUnhiddenProportionalPositionInsideWorkspaceRect,
-                       CGPoint(x: 164.0 / 1280, y: 0))
+        XCTAssertEqual(window.reopenedGeometry.pending?.bounds, otherMonitor)
+        XCTAssertNil(window.lastFloatingSize)
+        XCTAssertEqual(window.reopenedGeometry.pending?.retryCount, 0)
+        XCTAssertNil(window.prevUnhiddenProportionalPositionInsideWorkspaceRect)
         XCTAssertTrue(confirmReopenedGeometry(target, for: window, visible: true))
-        XCTAssertNil(window.pendingReopenedGeometryBounds)
+        XCTAssertNil(window.reopenedGeometry.pending?.bounds)
     }
 
     func testMonitorRebaseDoesNotMarkVisibleWindowHidden() {
@@ -184,7 +184,7 @@ final class PersistentFloatingGeometryTest: XCTestCase {
                        FloatingGeometry(x: -1720, y: -120, width: 1000, height: 800))
         XCTAssertNil(window.prevUnhiddenProportionalPositionInsideWorkspaceRect)
         window.cancelReopenedGeometry()
-        XCTAssertNil(window.pendingReopenedGeometryBounds)
+        XCTAssertNil(window.reopenedGeometry.pending?.bounds)
     }
 
 }

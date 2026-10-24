@@ -159,13 +159,16 @@ final class MacApp: AbstractApp {
         } == true
     }
 
-    func setAxFrame(_ windowId: UInt32, _ topLeft: CGPoint?, _ size: CGSize?) {
+    @discardableResult
+    func setAxFrame(_ windowId: UInt32, _ topLeft: CGPoint?, _ size: CGSize?) -> RunLoopJob {
         setFrameJobs.removeValue(forKey: windowId)?.cancel()
-        setFrameJobs[windowId] = withWindowAsync(windowId, .cancellable) { [axApp] window, job in
+        let job = withWindowAsync(windowId, .cancellable) { [axApp] window, job in
             try disableAnimations(app: axApp.threadGuarded, job) {
                 try setFrame(window, topLeft, size, job)
             }
         }
+        setFrameJobs[windowId] = job
+        return job
     }
 
     func setAxFrameForTermination(_ windowId: UInt32, _ topLeft: CGPoint?, _ size: CGSize?) {
@@ -303,6 +306,7 @@ final class MacApp: AbstractApp {
             for try await (pid, windowIds) in group {
                 if let app = MacApp.allAppsMap[pid] {
                     result[app] = windowIds
+                    invalidateAmbiguousReopenedGeometry(for: app)
                 }
             }
             return result

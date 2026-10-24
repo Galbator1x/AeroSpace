@@ -3,7 +3,7 @@ import Common
 
 struct FullscreenCommand: Command {
     let args: FullscreenCmdArgs
-    /*conforms*/ let shouldResetClosedWindowsCache = false
+    /*conforms*/ let shouldResetClosedWindowsCache = true
 
     func run(_ env: CmdEnv, _ io: CmdIo) -> BinaryExitCode {
         guard let target = args.resolveTargetOrReportError(env, io) else { return .fail }
@@ -25,6 +25,7 @@ struct FullscreenCommand: Command {
                     return .succ(io.err(msg))
             }
         }
+        window.cancelReopenedGeometry()
         window.isFullscreen = newState
         window.noOuterGapsInFullscreen = args.noOuterGaps
 
