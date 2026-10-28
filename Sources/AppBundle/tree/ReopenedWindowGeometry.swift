@@ -38,7 +38,7 @@ extension FloatingGeometry {
 @MainActor
 func prepareReopenedGeometry(_ geometry: FloatingGeometry, for window: Window) {
     guard let workspace = window.nodeWorkspace, window.isFloating, geometry.isValid else { return }
-    let bounds = FloatingGeometry(workspace.workspaceMonitor.rect)
+    let bounds = FloatingGeometry(workspace.workspaceMonitorInfo.rect)
     // A restore target is not a parking position: preserve the actual frame until it is applied.
     window.reopenedGeometry = .pending(ReopenedGeometryRestore(target: geometry.clamped(to: bounds), bounds: bounds))
 }
@@ -125,7 +125,7 @@ extension MacWindow {
     @MainActor
     func restoreReopenedGeometry() async throws {
         guard let bundle = macApp.rawAppBundleId else { cancelReopenedGeometry(); return }
-        let kind = try await macApp.getAxUiElementWindowType(windowId, getWindowLevel(for: windowId), .cancellable)
+        let kind = try await macApp.getAxUiElementWindowType(windowId, getWindowLevel(for: windowId, .cancellable), .cancellable)
         guard MacWindow.allWindowsMap[windowId] === self else { return }
         supportsReopenedGeometry = kind == .window
         guard supportsReopenedGeometry, isFloating else { cancelReopenedGeometry(); return }
@@ -163,7 +163,7 @@ extension MacWindow {
         lastFloatingSize = geometry.size
         do {
             try reopenedGeometryStore?.remember(geometry, for: bundle,
-                visibleBounds: FloatingGeometry(workspace.workspaceMonitor.rect), parked: false)
+                visibleBounds: FloatingGeometry(workspace.workspaceMonitorInfo.rect), parked: false)
         } catch { reportFloatingGeometryError("geometry store save failed: \(error)") }
     }
 }
@@ -193,7 +193,7 @@ extension Window {
     @MainActor
     func rebaseReopenedGeometryIfNeeded() {
         guard pendingReopenedGeometry != nil, let workspace = nodeWorkspace else { return }
-        rebaseReopenedGeometry(to: FloatingGeometry(workspace.workspaceMonitor.rect))
+        rebaseReopenedGeometry(to: FloatingGeometry(workspace.workspaceMonitorInfo.rect))
     }
 
     @MainActor

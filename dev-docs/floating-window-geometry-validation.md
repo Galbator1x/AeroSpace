@@ -283,3 +283,45 @@ those in Package.resolved; no dependency version or tracked manifest change is
 included. Temporary mirror configuration, dependency/build/module caches and
 harness files are removed after deployment; signed packages, validation output
 and the prior installed application/geometry are retained in aerospace-build.
+
+## Upstream monitor-tree integration (fix6, 2026-10-29)
+
+Integrated upstream main through `be3e58df4744a19d4cd57342ac8cad19fad04759`
+(31 commits after the original base). The working branch remains
+`codex/floating-window-geometry-lifecycle`; main and the older fix branches are
+unchanged.
+
+Geometry now resolves monitor bounds through `workspaceMonitorInfo`. Layout-cache
+recovery follows upstream's Monitor -> WorkspacesContainer -> Workspace tree,
+restores the floating snapshot only for the redetected window, and preserves the
+visible workspace separately from hidden workspace bindings. Awaited reveals,
+restore ownership, ambiguity cancellation and pending-size/retry state are retained.
+The geometry eligibility lookup uses upstream's asynchronous window-level cache.
+
+Fixed an upstream cache-completion defect: clearing the shared in-flight latch
+before signalling it discarded the only reference used to wake concurrent misses.
+The completing request now retains its own latch and signals that instance. An
+injected cache computation lets the test hold the first request until the second
+has joined it. Restoring the original signalling line caused that regression to
+time out; the corrected version passes. The CLT runner has an execution timeout
+so a suspended continuation cannot hang validation indefinitely.
+
+All 31 geometry/cache test methods pass against the compiled AppBundle objects,
+including a new hidden-window/visible-workspace cache recovery test. The test setup
+selects the visible workspace before collecting old empty workspaces, matching the
+new explicit visibility state. Debug compilation uses Swift 6.4, the macOS 26.5 SDK
+and SwiftPM native. Native is explicitly selected because the default XCBuild
+backend fails to initialize with the installed CLT. Full XCTest and interactive
+lock/unlock, monitor reconnection and reboot checks remain separate validations.
+
+Packaging uses version `0.0.0-main-corner-fix6`, the existing bundle identifier and
+LaunchAgent, a source-revision Info.plist field and ad-hoc signing. Retain the prior
+signed app and the flushed geometry before replacing the bundle. Monitoring can
+be resumed with its existing one-minute LaunchAgent and history.
+
+A standalone smoke process linked against the same AppBundle objects also parsed
+`dotfiles/files/aerospace.toml` with no errors and flushed a deliberately blocked
+geometry write after a real SIGTERM. These checks did not touch the live geometry
+or application process. Packaging/deployment evidence is retained in the
+`fix6-<source revision>` directory under aerospace-build, including a manifest,
+build/test/smoke logs, signed archive and installation backup location.

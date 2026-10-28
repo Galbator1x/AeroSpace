@@ -17,6 +17,33 @@ final class ClosedWindowGeometryTest: XCTestCase {
         try await checkRedetection(earlySnapshot: true)
     }
 
+    func testRedetectionPreservesVisibleAndHiddenWorkspacesInMonitorTree() async throws {
+        let visible = Workspace.get(byName: "visible")
+        let hidden = Workspace.get(byName: "hidden")
+        let original = TestWindow.new(id: 2011, parent: hidden.floatingWindowsContainer)
+        let visibleWindow = TestWindow.new(id: 2012, parent: visible.floatingWindowsContainer)
+        XCTAssertTrue(mainMonitorInfo.setVisibleWorkspace(visible))
+        let target = FloatingGeometry(x: 100, y: 50, width: 600, height: 400)
+        prepareReopenedGeometry(target, for: original)
+        original.prevUnhiddenProportionalPositionInsideWorkspaceRect = CGPoint(x: 0.1, y: 0.2)
+        cacheClosedWindowIfNeeded()
+        let pending = original.reopenedGeometry
+        original.unbindFromParent()
+        TestApp.shared.windows = [visibleWindow]
+        let redetected = TestWindow.new(id: 2011, parent: visible.floatingWindowsContainer)
+
+        let restored = try await restoreClosedWindowsCacheIfNeeded(newlyDetectedWindow: redetected)
+        XCTAssertTrue(restored)
+        XCTAssertTrue(redetected.nodeWorkspace === hidden)
+        XCTAssertTrue(visibleWindow.nodeWorkspace === visible)
+        XCTAssertTrue(mainMonitorInfo.visibleWorkspace === visible)
+        XCTAssertTrue(visible.isVisible)
+        XCTAssertFalse(hidden.isVisible)
+        XCTAssertEqual(redetected.reopenedGeometry, pending)
+        XCTAssertEqual(redetected.prevUnhiddenProportionalPositionInsideWorkspaceRect, CGPoint(x: 0.1, y: 0.2))
+        XCTAssertTrue(hidden.parent === visible.parent)
+    }
+
     private func checkRedetection(earlySnapshot: Bool) async throws {
         let workspace = Workspace.get(byName: "Q")
         let original = TestWindow.new(id: 1943, parent: workspace.floatingWindowsContainer)

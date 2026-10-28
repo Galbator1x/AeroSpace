@@ -78,7 +78,7 @@ final class ReopenedGeometryLifecycleTest: XCTestCase {
             rect: Rect(topLeftX: 1919, topLeftY: 1079, width: 600, height: 400))
         let other = TestWindow.new(id: 9998, parent: workspace.floatingWindowsContainer)
         window.lastFloatingSize = CGSize(width: 600, height: 400)
-        let bounds = workspace.workspaceMonitor.rect
+        let bounds = workspace.workspaceMonitorInfo.rect
         window.prevUnhiddenProportionalPositionInsideWorkspaceRect = CGPoint(x: 100 / bounds.width, y: 50 / bounds.height)
         prepareReopenedGeometry(FloatingGeometry(x: 200, y: 80, width: 1100, height: 800), for: window)
         XCTAssertFalse(invalidateAmbiguousReopenedGeometry([window], windowCount: 1))
@@ -166,7 +166,7 @@ final class ReopenedGeometryLifecycleTest: XCTestCase {
     func testCancelledQueuedRevealStillUnhidesWindow() async throws {
         let workspace = Workspace.get(byName: "Q")
         let window = DeferredRevealWindow(id: 9999, workspace: workspace)
-        let bounds = workspace.workspaceMonitor.rect
+        let bounds = workspace.workspaceMonitorInfo.rect
         window.prevUnhiddenProportionalPositionInsideWorkspaceRect = CGPoint(x: 100 / bounds.width, y: 50 / bounds.height)
         prepareReopenedGeometry(FloatingGeometry(x: 200, y: 80, width: 1100, height: 800), for: window)
         try await window.unhideFromCorner()
@@ -181,13 +181,13 @@ final class ReopenedGeometryLifecycleTest: XCTestCase {
     func testAmbiguityCancelsAwaitedRevealAndFallsBackToReturnPosition() async throws {
         let workspace = Workspace.get(byName: "Q")
         let window = DeferredRevealWindow(id: 9999, workspace: workspace)
-        let bounds = workspace.workspaceMonitor.rect
+        let bounds = workspace.workspaceMonitorInfo.rect
         let position = CGPoint(x: 100 / bounds.width, y: 50 / bounds.height)
         window.prevUnhiddenProportionalPositionInsideWorkspaceRect = position
         window.blockReveal = true
         prepareReopenedGeometry(FloatingGeometry(x: 200, y: 80, width: 1100, height: 800), for: window)
         let reveal = Task { @MainActor in try await window.unhideFromCorner() }
-        try await window.started.await()
+        try await window.started.await(.cancellable)
         XCTAssertEqual(window.prevUnhiddenProportionalPositionInsideWorkspaceRect, position)
         invalidateAmbiguousReopenedGeometry([window], windowCount: 1, appCount: 2)
         try await reveal.value
@@ -200,13 +200,13 @@ final class ReopenedGeometryLifecycleTest: XCTestCase {
     func testParentCancellationKeepsRevealReturnPosition() async throws {
         let workspace = Workspace.get(byName: "Q")
         let window = DeferredRevealWindow(id: 9999, workspace: workspace)
-        let bounds = workspace.workspaceMonitor.rect
+        let bounds = workspace.workspaceMonitorInfo.rect
         let position = CGPoint(x: 100 / bounds.width, y: 50 / bounds.height)
         window.prevUnhiddenProportionalPositionInsideWorkspaceRect = position
         window.blockReveal = true
         prepareReopenedGeometry(FloatingGeometry(x: 200, y: 80, width: 1100, height: 800), for: window)
         let reveal = Task { @MainActor in try await window.unhideFromCorner() }
-        try await window.started.await()
+        try await window.started.await(.cancellable)
         reveal.cancel()
         do {
             try await reveal.value
@@ -228,7 +228,7 @@ final class ReopenedGeometryLifecycleTest: XCTestCase {
         let wanted = FloatingGeometry(x: 200, y: 80, width: 1100, height: 800)
         prepareReopenedGeometry(wanted, for: window)
         let reveal = Task { @MainActor in try await window.unhideFromCorner() }
-        try await window.started.await()
+        try await window.started.await(.cancellable)
         XCTAssertEqual(window.prevUnhiddenProportionalPositionInsideWorkspaceRect, position)
         await window.release.signalToAll()
         try await reveal.value
@@ -239,15 +239,15 @@ final class ReopenedGeometryLifecycleTest: XCTestCase {
     func testOverlappingRevealsCancelAllSupersededWrites() async throws {
         let workspace = Workspace.get(byName: "Q")
         let window = DeferredRevealWindow(id: 9999, workspace: workspace)
-        let bounds = workspace.workspaceMonitor.rect
+        let bounds = workspace.workspaceMonitorInfo.rect
         let position = CGPoint(x: 100 / bounds.width, y: 50 / bounds.height)
         window.prevUnhiddenProportionalPositionInsideWorkspaceRect = position
         window.blockReveal = true
         prepareReopenedGeometry(FloatingGeometry(x: 200, y: 80, width: 1100, height: 800), for: window)
         let first = Task { @MainActor in try await window.unhideFromCorner() }
-        try await window.started.await()
+        try await window.started.await(.cancellable)
         let second = Task { @MainActor in try await window.unhideFromCorner() }
-        try await window.secondStarted.await()
+        try await window.secondStarted.await(.cancellable)
         try await first.value
         XCTAssertEqual(window.prevUnhiddenProportionalPositionInsideWorkspaceRect, position)
         invalidateAmbiguousReopenedGeometry([window], windowCount: 1, appCount: 2)
@@ -265,7 +265,7 @@ final class ReopenedGeometryLifecycleTest: XCTestCase {
         window.blockReveal = true
         prepareReopenedGeometry(FloatingGeometry(x: 200, y: 80, width: 1100, height: 800), for: window)
         let reveal = Task { @MainActor in try await window.unhideFromCorner() }
-        try await window.started.await()
+        try await window.started.await(.cancellable)
         window.cancelReopenedGeometryReveal()
         let newerPosition = CGPoint(x: 0.2, y: 0.3)
         window.prevUnhiddenProportionalPositionInsideWorkspaceRect = newerPosition
@@ -285,7 +285,7 @@ final class ReopenedGeometryLifecycleTest: XCTestCase {
         window.blockReveal = true
         prepareReopenedGeometry(FloatingGeometry(x: 200, y: 80, width: 1100, height: 800), for: window)
         let reveal = Task { @MainActor in try await window.unhideFromCorner() }
-        try await window.started.await()
+        try await window.started.await(.cancellable)
         let command = parseCommand("fullscreen --window-id 9999 on", allowExecAndForget: true, allowEval: true).cmdOrNil!
         _ = await command.run(.defaultEnv, .emptyStdin)
         let fullscreen = FloatingGeometry(x: 0, y: 0, width: 1920, height: 1080)
@@ -340,7 +340,7 @@ private final class DeferredRevealWindow: Window {
             applicationsStarted += 1
             await started.signalToAll()
             if applicationsStarted == 2 { await secondStarted.signalToAll() }
-            try await release.await()
+            try await release.await(.cancellable)
         }
         successfulApplications += 1
         setAxFrame(geometry.point, geometry.size)
