@@ -325,3 +325,25 @@ geometry write after a real SIGTERM. These checks did not touch the live geometr
 or application process. Packaging/deployment evidence is retained in the
 `fix6-<source revision>` directory under aerospace-build, including a manifest,
 build/test/smoke logs, signed archive and installation backup location.
+
+## Post-integration review fixes (2026-10-29)
+
+A pending geometry restore now takes precedence over the ordinary floating-window
+monitor correction. Previously the correction could replace an already queued
+position-and-size restore with a position-only frame, spending a retry without
+applying the saved size. The new regression prequeues a restore on the deferred
+frame fixture and runs the actual workspace layout; the saved position and size
+must survive. It exercises the relocation condition with a hidden test workspace,
+not a physical multi-monitor Accessibility session.
+
+Unchanged geometry and absent forget operations now retry a failed writer before
+returning, without copying and comparing the complete entries dictionary. Layout
+checks ambiguity locally and cancels only the current window; app refresh,
+detection and reveal retain bundle-wide invalidation. No ambiguity result is
+cached across suspension. Only multiple windows or duplicate app instances cause
+cancellation and deletion; zero/unknown counts continue to defer.
+
+SwiftPM native debug compilation and all 32 CLT geometry/cache tests pass. A fresh
+behavior and standards review was performed after the changes; the final behavior
+review found no further actionable defect. The installed fix6 application and
+monitoring remain separate from this source-only checkpoint.

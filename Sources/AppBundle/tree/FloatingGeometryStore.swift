@@ -62,12 +62,14 @@ struct FloatingGeometryStore {
 
     mutating func remember(_ geometry: FloatingGeometry, for bundle: String, visibleBounds: FloatingGeometry, parked: Bool) throws {
         guard !parked, geometry.isVisible(in: visibleBounds) else { return }
+        guard entries[bundle] != geometry else { writer?.retryIfNeeded(); return }
         var updated = entries
         updated[bundle] = geometry
         try commit(updated)
     }
 
     mutating func forget(_ bundle: String) throws {
+        guard entries[bundle] != nil else { writer?.retryIfNeeded(); return }
         var updated = entries
         updated.removeValue(forKey: bundle)
         try commit(updated)

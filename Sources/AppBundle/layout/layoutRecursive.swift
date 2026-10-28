@@ -83,6 +83,8 @@ extension Window {
         if let windowRect, let window = self as? MacWindow {
             window.rememberReopenedGeometry(windowRect)
         }
+        // A pending restore owns both position and size; relocation must not replace its queued frame.
+        guard pendingReopenedGeometry == nil else { return }
         let currentMonitor = windowRect?.center.monitorApproximation
         if let currentMonitor, let windowRect, workspace != currentMonitor.visibleWorkspace {
             let windowTopLeftCorner = windowRect.topLeftCorner

@@ -10,6 +10,20 @@ final class ReopenedGeometryLifecycleTest: XCTestCase {
         resetClosedWindowsCache()
     }
 
+    func testLayoutDoesNotReplaceQueuedRestoreWithPositionOnlyRelocation() async throws {
+        let workspace = Workspace.get(byName: "hidden-layout")
+        let window = DeferredRevealWindow(id: 9971, workspace: workspace)
+        let target = FloatingGeometry(x: 100, y: 50, width: 900, height: 700)
+        prepareReopenedGeometry(target, for: window)
+        window.setReopenedGeometryFrame(target)
+        XCTAssertFalse(workspace.isVisible)
+        try await workspace.layoutWorkspace()
+        window.drainFrames()
+        let actual = try await window.getAxRect(.cancellable)
+        XCTAssertEqual(actual.map(FloatingGeometry.init), target)
+        XCTAssertNotNil(window.pendingReopenedGeometry)
+    }
+
     func testRedetectionRetainsPendingRestore() async throws {
         let workspace = Workspace.get(byName: "Q")
         let original = TestWindow.new(id: 1943, parent: workspace.floatingWindowsContainer)

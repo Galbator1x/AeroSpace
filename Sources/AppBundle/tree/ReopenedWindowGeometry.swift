@@ -112,13 +112,18 @@ func invalidateAmbiguousReopenedGeometry(_ windows: [Window], windowCount: Int, 
 func invalidateAmbiguousReopenedGeometry(for app: MacApp, liveWindowCount: Int? = nil) -> Bool {
     guard let bundle = app.rawAppBundleId else { return false }
     let count = liveWindowCount ?? app.managedWindowCount
-    let duplicateApp = MacApp.allAppsMap.values.contains { $0 !== app && $0.rawAppBundleId == bundle }
+    let duplicateApp = hasDuplicateGeometryApp(app)
     guard count > 1 || duplicateApp else { return false }
     let windows = MacWindow.allWindows.filter { $0.macApp.rawAppBundleId == bundle }
     invalidateAmbiguousReopenedGeometry(windows, windowCount: count, appCount: duplicateApp ? 2 : 1)
     do { try reopenedGeometryStore?.forget(bundle) }
     catch { reportFloatingGeometryError("geometry store forget failed: \(error)") }
     return true
+}
+
+@MainActor
+private func hasDuplicateGeometryApp(_ app: MacApp) -> Bool {
+    MacApp.allAppsMap.values.contains { $0 !== app && $0.rawAppBundleId == app.rawAppBundleId }
 }
 
 extension MacWindow {
@@ -147,7 +152,15 @@ extension MacWindow {
 
     @MainActor
     func rememberReopenedGeometry(_ rect: Rect, beforeParking: Bool = false) {
-        guard !invalidateAmbiguousReopenedGeometry(for: macApp) else { return }
+        // Refresh/detection/reveal invalidate the whole bundle. Layout only needs to cancel this window.
+        if macApp.managedWindowCount > 1 || hasDuplicateGeometryApp(macApp) {
+            cancelReopenedGeometry(allowRevealFallback: true)
+            if let bundle = macApp.rawAppBundleId {
+                do { try reopenedGeometryStore?.forget(bundle) }
+                catch { reportFloatingGeometryError("geometry store forget failed: \(error)") }
+            }
+            return
+        }
         rebaseReopenedGeometryIfNeeded()
         guard !needsReopenedGeometryDecision, supportsReopenedGeometry, isFloating, !isFullscreen,
               let bundle = macApp.rawAppBundleId, let workspace = nodeWorkspace,
